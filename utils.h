@@ -4,8 +4,7 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include <HTTPClient.h>
-//#include "config.h"
-//#include "secrets.h"
+
 
 HTTPClient httpclient;
 DynamicJsonDocument jdoc(1024);

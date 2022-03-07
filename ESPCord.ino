@@ -1,13 +1,25 @@
 #include "secrets.h"
 #include "config.h"
 #include "events.h"
-#include "event_funcs.h"
 
 #include <Arduino.h>
 #include <ArduinoWebsockets.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+
+
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+#include "event_funcs.h"
 
 using namespace websockets;
 
@@ -50,21 +62,57 @@ void startOTA() {
     .onStart([]() {
       String type;
       if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "firmware";
+        type = "Firmware";
       else // U_SPIFFS
-        type = "filesystem";
+        type = "Filesystem";
 
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
       Serial.println("OTA: Start updating " + type);
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Updating...");
+
+      display.setCursor(0, 16);
+      display.println("OTA: Start updating:");
+      display.print("    ");
+      display.println(type);
+      display.display();
     })
     .onEnd([]() {
       Serial.println("\nOTA: End");
+
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Updating");
+
+      display.setCursor(0, 16);
+      display.println("Update Complete!");
+      display.display();
     })
     .onProgress([](unsigned int progress, unsigned int total) {
       Serial.printf("OTA: Progress: %u%%\r", (progress / (total / 100)));
+
+      display.setCursor(0, 36);
+      display.writeFillRect(0, 36, 128, 10, 0);
+      display.printf("OTA: Progress: %u%%\r", (progress / (total / 100)));
+      display.display();
     })
     .onError([](ota_error_t error) {
       Serial.printf("OTA: Error[%u]: ", error);
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Update ERROR!");
+
+      display.setCursor(0, 16);
+      display.printf("OTA: Error[%u]: ", error);
+
+      if (error == OTA_AUTH_ERROR) display.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR) display.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) display.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) display.println("Receive Failed");
+      else if (error == OTA_END_ERROR) display.println("End Failed");
+
+      display.display();
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
       else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
@@ -72,15 +120,53 @@ void startOTA() {
       else if (error == OTA_END_ERROR) Serial.println("End Failed");
     });
 
+  ArduinoOTA.setHostname("ESPCord");
   ArduinoOTA.begin();
 }
 
 void setupwifi() {
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+
+  sleep(1);
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("Booting...");
+
+  display.setCursor(0, 16);
+  display.setTextSize(3);
+  display.println("ESPCord");
+  display.setTextSize(1);
+  display.println("By Lewis L. Foster");
+  display.println("sniff122#6218");
+  display.display();
+
+  sleep(2);
+
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+  WiFi.setHostname("ESPCord");
   WiFi.begin(SSID, passphrase);
   Serial.print("Connecting to ");
   Serial.println(SSID);
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("WiFi Connecting...");
+
+  display.setCursor(0, 16);
+  display.print("Connecting to: ");
+  display.println(SSID);
+
+  display.display();
+
   for (int i = 0; i < 10 && WiFi.status() != WL_CONNECTED; i++) {
     Serial.print(".");
+    display.print(".");
+    display.display();
     delay(1000);
   }
   Serial.println("");
@@ -88,17 +174,52 @@ void setupwifi() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.print("Unable to connect to ");
     Serial.println(SSID);
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 0);
+    display.println("WiFi FAILURE");
+    display.setCursor(0, 16);
+    display.print("Unable to connect to: ");
+    display.println(SSID);
+
+    display.display();
+
     sleep(5);
     Serial.println("Rebooting....");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 0);
+    display.println("WiFi FAILURE");
+    display.setCursor(0, 16);
+    display.println("Rebooting...");
+    display.display();
     ESP.restart();
   }
 
   Serial.print("Succesfully connected to ");
   Serial.println(SSID);
 
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("WiFi Connected!");
+  display.setCursor(0, 16);
+  display.print("Succesfully connected to ");
+  display.println(SSID);
   Serial.println();
+
   Serial.print("IPv4 Address: ");
   Serial.println(WiFi.localIP());
+
+
+  display.println("IPv4 Address: ");
+  display.println(WiFi.localIP());
+  display.display();
+  sleep(2);
 }
 
 
@@ -119,24 +240,24 @@ void onMessage(WebsocketsMessage msg){
       websocketSessionId = doc["d"]["session_id"].as<String>();
       hasWsSession = true;
       on_ready(doc);
-      INFOLOG("Setting presence");
-      doc.clear();
-      doc["op"] = 3;
-      doc["d"] = doc.createNestedObject();
-      doc["d"]["since"] = 91879201;
-      doc["d"]["activities"] = doc.createNestedArray();
-      doc["d"]["activities"][0] = doc.createNestedArray();
-      doc["d"]["activities"][0]["name"] = "I am running on an ESP32!";
-      doc["d"]["activities"][0]["type"] = 0;
-      doc["d"]["status"] = "online";
-      doc["d"]["afk"] = false;
+      // INFOLOG("Setting presence");
+      // doc.clear();
+      // doc["op"] = 3;
+      // doc["d"] = doc.createNestedObject();
+      // doc["d"]["since"] = 91879201;
+      // doc["d"]["activities"] = doc.createNestedArray();
+      // doc["d"]["activities"][0] = doc.createNestedArray();
+      // doc["d"]["activities"][0]["name"] = "I am running on an ESP32!";
+      // doc["d"]["activities"][0]["type"] = 0;
+      // doc["d"]["status"] = "online";
+      // doc["d"]["afk"] = false;
 
-      String msg;
+      // String msg;
 
-      serializeJson(doc, msg);
+      // serializeJson(doc, msg);
 
-      DEBUGLOG("Send: " + msg);
-      client.send(msg);
+      // DEBUGLOG("Send: " + msg);
+      // client.send(msg);
     }
     else if (doc["t"] ==  DISCORD_EVENT_GUILD_MEMBER_ADD) {
       on_member_join(doc);
@@ -210,10 +331,18 @@ void onEvent(WebsocketsEvent event, String data) {
   if(event == WebsocketsEvent::ConnectionOpened) {
     Serial.println("Connnection Opened");
   } else if(event == WebsocketsEvent::ConnectionClosed) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("Discord Connection Closed...");
+    display.display();
     Serial.println("Connnection Closed");
     Serial.println(data);
     sleep(5);
     Serial.println("Reconnecting to Discord WS Gateway");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("Discord Reconnecting...");
+    display.display();
     bool wss_is_connected = client.connect("wss://gateway.discord.gg:443/?v=8&encoding=json");
   } else if(event == WebsocketsEvent::GotPing) {
     Serial.println("Got a Ping!");
@@ -224,6 +353,7 @@ void onEvent(WebsocketsEvent event, String data) {
 
 void setup() {
   Serial.begin(115500);
+  Serial.println(ESP.getFreeHeap());
   setupwifi();
 
   startOTA();
@@ -255,6 +385,12 @@ void setup() {
     "-----END CERTIFICATE-----\n";
 
   client.setCACert(ssl_ca_cert);
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Discord Connecting...");
+  display.display();
+
 
   bool wss_is_connected = client.connect("wss://gateway.discord.gg:443/?v=8&encoding=json");
 }
@@ -295,9 +431,23 @@ void loop() {
       INFOLOG("Heartbeat ack timeout");
       client.close();
       heartbeatInterval = 0;
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Discord FAILURE!");
+
+      display.setCursor(0, 16);
+      display.println("Rebooting in 5 seconds...");
+      display.display();
       INFOLOG("Rebooting in 5 seconds...");
       sleep(5);
       INFOLOG("Rebooting now!");
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.println("Discord FAILURE!");
+
+      display.setCursor(0, 16);
+      display.println("Rebooting...");
+      display.display();
       ESP.restart();
     }
   }
